@@ -1,7 +1,13 @@
 const socketAuth = require("../../src/middleware/socketAuth");
 const { redisClient, redisSubscriber } = require("../config/redis");
-const db = require("../config/db");
+const { scheduledQuizStart } = require("../../src/services/quizScheduler");
 require("dotenv").config();
+const {
+  handleUserResponse,
+  getUserScore,
+  sendScoresToUsers,
+  sendQuizStart,
+} = require("../controllers/quizControllers");
 
 const ANSWER_DEADLINE = parseInt(process.env.ANSWER_DEADLINE);
 
@@ -14,20 +20,26 @@ module.exports = (io) => {
     } else {
       console.log(`✅ Subscribed to ${count} channel(s): quiz_channel`);
     }
+    redisSubscriber.subscribe("quiz_info", (err, count) => {
+      if (err) {
+        console.error("❌ redisClient subscription failed:", err);
+      } else {
+        console.log(`✅ Subscribed to ${count} channel(s): quiz info`);
+        scheduledQuizStart();
+      }
+    });
   });
 
   redisSubscriber.on("message", async (channel, message) => {
     if (channel === "quiz_info") {
-      const broadcastQuizEnd = () => {
-        io.emit("quiz_info", message);
-      };
-      setInterval(broadcastQuizEnd, 1000);
+      const start_time = message;
+      await redisClient.set("quiz_start_time", start_time);
+      await sendQuizStart(io);
     }
     if (channel === "quiz_channel") {
-      console.log(`📩 Message received on ${channel}:`, message);
       const questionData = JSON.parse(message);
       const { id, question_text, options, correct_answer } = questionData;
-      console.log("Correct answer: ", correct_answer);
+      await redisClient.hset("correct_answer", id, correct_answer);
       const startTime = Date.now();
       const questionToBeSent = {
         id,
@@ -42,22 +54,23 @@ module.exports = (io) => {
       await redisClient.set(`question_start_time:${id}`, startTime);
 
       io.emit("new_question", questionToBeSent);
-      console.log("Question sent to all users: ", {
-        id,
-        question_text,
-        options,
-        startTime,
-      });
+      console.log("Question sent to all users: ", questionToBeSent);
 
-      setTimeout(() => {
-        io.emit("time_up", { message: "Time is up! Processing answers..." });
+      setTimeout(async () => {
         io.emit("correct_answer", correct_answer);
+        await sendScoresToUsers(io);
       }, ANSWER_DEADLINE * 1000);
     }
   });
 
   io.on("connection", async (socket) => {
+    const userId = socket.user.userId;
     console.log(`User connected: ${socket.id} ${socket.user.username}`);
+    await redisClient.hset("socket_to_user", socket.id, userId);
+    await redisClient.hset("user_to_socket", userId, socket.id);
+    const userScore = await getUserScore(userId);
+    socket.emit("update_score", { score: userScore });
+    await sendQuizStart(socket);
 
     socket.on("submit_answer", async ({ questionId, answer }) => {
       try {
@@ -65,11 +78,6 @@ module.exports = (io) => {
           socket.emit("error", { message: "Unauthorized" });
           return;
         }
-
-        const userId = socket.user.userId;
-        console.log(socket.user);
-        console.log(`${userId} responded ${answer}`);
-        const submittedAt = new Date();
         const startTime = await redisClient.get(
           `question_start_time:${questionId}`,
         );
@@ -81,17 +89,12 @@ module.exports = (io) => {
 
         const responseTime = (Date.now() - startTime) / 1000;
         if (Math.ceil(responseTime) > ANSWER_DEADLINE) {
-          console.log("time up");
           socket.emit("error", {
             message: "Time exceeded. Answer not recorded.",
           });
           return;
         }
-
-        await db.query(
-          "Insert into responses (user_id, question_id, selected_answer, response_time) values ($1, $2, $3, $4)",
-          [userId, questionId, answer, responseTime],
-        );
+        handleUserResponse(userId, questionId, answer, responseTime);
         socket.emit("answer_received", {
           message: "Answer recorded. Wait for results.",
           response_time: responseTime,
@@ -105,7 +108,6 @@ module.exports = (io) => {
     socket.on("get_latest_question", async () => {
       try {
         const latestQuestion = await redisClient.get("latest_question");
-        console.log("sent latest question ", latestQuestion);
         if (latestQuestion) {
           socket.emit("new_question", JSON.parse(latestQuestion));
         } else {
@@ -117,8 +119,12 @@ module.exports = (io) => {
       }
     });
 
-    socket.on("disconnect", () =>
-      console.log(`User disconnected: ${socket.id} ${socket.user.username}`),
-    );
+    socket.on("disconnect", async () => {
+      console.log(`User disconnected: ${socket.id} ${socket.user?.username}`);
+      if (userId) {
+        await redisClient.hdel("socket_to_user", socket.id);
+        await redisClient.hdel("user_to_socket", userId);
+      }
+    });
   });
 };

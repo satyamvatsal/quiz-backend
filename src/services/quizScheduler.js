@@ -49,15 +49,18 @@ const sendNextQuestion = async () => {
 const startQuestionScheduler = async () => {
   console.log("🔄 Starting question scheduler...");
   await loadQuestions();
+  await sendNextQuestion();
   if (questionInterval) clearInterval(questionInterval);
   questionInterval = setInterval(sendNextQuestion, QUESTION_INTERVAL);
 };
 
 const scheduledQuizStart = async () => {
-  const quizStartTime = moment(process.env.QUIZ_START_TIME);
+  const quizStartTimeMoment = moment(process.env.QUIZ_START_TIME);
+  const quizStartTime = moment(quizStartTimeMoment).valueOf();
   await redisPublisher.publish("quiz_info", quizStartTime);
+  console.log("quiz info published ", quizStartTime);
   const currentTime = moment();
-  const delay = quizStartTime.diff(currentTime);
+  const delay = quizStartTimeMoment.diff(currentTime);
   if (delay > 0) {
     console.log(`⏳ Quiz will start in ${delay / 1000} seconds...`);
     setTimeout(startQuestionScheduler, delay);
