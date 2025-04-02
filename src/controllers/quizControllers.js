@@ -32,16 +32,6 @@ const handleUserResponse = async (
   }
 };
 
-const getUserScore = async (userId) => {
-  try {
-    const score = await redisClient.hget("user_scores", userId);
-    return score || 0;
-  } catch (err) {
-    console.log("Error fetching user score: ", err);
-    return 0;
-  }
-};
-
 const sendScoresToUsers = async (io) => {
   const userSocketMap = await redisClient.hgetall("user_to_socket");
 
@@ -69,7 +59,6 @@ const sendQuizStart = async (socket) => {
 
 module.exports = {
   handleUserResponse,
-  getUserScore,
   sendScoresToUsers,
   sendQuizStart,
 };

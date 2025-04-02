@@ -68,8 +68,6 @@ module.exports = (io) => {
     console.log(`User connected: ${socket.id} ${socket.user.username}`);
     await redisClient.hset("socket_to_user", socket.id, userId);
     await redisClient.hset("user_to_socket", userId, socket.id);
-    const userScore = await getUserScore(userId);
-    socket.emit("update_score", { score: userScore });
     await sendQuizStart(socket);
 
     socket.on("submit_answer", async ({ questionId, answer }) => {

@@ -41,7 +41,7 @@ router.post("/register", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
-
+  console.log(username);
   try {
     const result = await db.query("SELECT * FROM users WHERE username = $1", [
       username,
@@ -62,6 +62,7 @@ router.post("/login", async (req, res) => {
 
     res.json({ token });
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: "Database error" });
   }
 });
