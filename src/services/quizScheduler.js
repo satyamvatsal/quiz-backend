@@ -1,4 +1,4 @@
-const { redisPublisher } = require("../config/redis");
+const { redisPublisher, redisClient } = require("../config/redis");
 const moment = require("moment");
 const db = require("../config/db");
 require("dotenv").config();
@@ -27,8 +27,11 @@ const sendNextQuestion = async () => {
     return;
   }
   if (currentIndex >= questions.length) {
-    const message = "The quiz has ended.";
-    await redisPublisher.publish("quiz_info", message);
+    const message = "The quiz has ended. Thank you for participation";
+    const quizEndTime = Date.now();
+    const data = JSON.stringify({ message, quizEndTime, quizEnded: true });
+    await redisClient.del("latest_question");
+    await redisPublisher.publish("quiz_info", data);
     clearInterval(questionInterval);
     return;
   }
@@ -57,7 +60,16 @@ const startQuestionScheduler = async () => {
 const scheduledQuizStart = async () => {
   const quizStartTimeMoment = moment(process.env.QUIZ_START_TIME);
   const quizStartTime = moment(quizStartTimeMoment).valueOf();
-  await redisPublisher.publish("quiz_info", quizStartTime);
+  const message = "The quiz will be started soon.";
+  const quizEnded = false;
+  await redisPublisher.publish(
+    "quiz_info",
+    JSON.stringify({
+      message,
+      quizStartTime,
+      quizEnded,
+    }),
+  );
   console.log("quiz info published ", quizStartTime);
   const currentTime = moment();
   const delay = quizStartTimeMoment.diff(currentTime);

@@ -6,7 +6,6 @@ const redisSubscriber = new Redis(process.env.REDIS_URL);
 const redisPublisher = new Redis(process.env.REDIS_URL);
 
 redisClient.on("connect", async () => {
-  await redisClient.flushall();
   console.log("✅ Redis Client Connected");
 });
 redisSubscriber.on("connect", async () =>

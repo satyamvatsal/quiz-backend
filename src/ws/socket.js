@@ -6,7 +6,8 @@ const {
   handleUserResponse,
   getUserScore,
   sendScoresToUsers,
-  sendQuizStart,
+  sendQuizInfo,
+  sendLatestQuestion,
 } = require("../controllers/quizControllers");
 
 const ANSWER_DEADLINE = parseInt(process.env.ANSWER_DEADLINE);
@@ -32,9 +33,9 @@ module.exports = (io) => {
 
   redisSubscriber.on("message", async (channel, message) => {
     if (channel === "quiz_info") {
-      const start_time = message;
-      await redisClient.set("quiz_start_time", start_time);
-      await sendQuizStart(io);
+      const data = JSON.parse(message);
+      await redisClient.set("quiz_info", message);
+      await sendQuizInfo(io, data);
     }
     if (channel === "quiz_channel") {
       const questionData = JSON.parse(message);
@@ -52,8 +53,7 @@ module.exports = (io) => {
         JSON.stringify(questionToBeSent),
       );
       await redisClient.set(`question_start_time:${id}`, startTime);
-
-      io.emit("new_question", questionToBeSent);
+      await sendLatestQuestion(io);
       console.log("Question sent to all users: ", questionToBeSent);
 
       setTimeout(async () => {
@@ -66,12 +66,20 @@ module.exports = (io) => {
   io.on("connection", async (socket) => {
     const userId = socket.user.userId;
     console.log(`User connected: ${socket.id} ${socket.user.username}`);
-    await redisClient.hset("socket_to_user", socket.id, userId);
-    await redisClient.hset("user_to_socket", userId, socket.id);
-    await sendQuizStart(socket);
+    if (socket.user.username === "admin") {
+      socket.join("leaderboard");
+    }
+    redisClient.hset("socket_to_user", socket.id, userId);
+    redisClient.hset("user_to_socket", userId, socket.id);
+    redisClient.hset("socket_to_username", socket.id, socket.user.username);
+    const message = await redisClient.get("quiz_info");
+    const messageObject = JSON.parse(message);
+    await sendQuizInfo(socket, messageObject);
+    await sendLatestQuestion(socket);
 
     socket.on("submit_answer", async ({ questionId, answer }) => {
       try {
+        const currentTime = Date.now();
         if (!socket.user) {
           socket.emit("error", { message: "Unauthorized" });
           return;
@@ -85,7 +93,7 @@ module.exports = (io) => {
           return;
         }
 
-        const responseTime = (Date.now() - startTime) / 1000;
+        const responseTime = (currentTime - startTime) / 1000;
         if (Math.ceil(responseTime) > ANSWER_DEADLINE) {
           socket.emit("error", {
             message: "Time exceeded. Answer not recorded.",
@@ -99,20 +107,6 @@ module.exports = (io) => {
         });
       } catch (err) {
         console.error("Error processing answer:", err);
-        socket.emit("error", { message: "Server error" });
-      }
-    });
-
-    socket.on("get_latest_question", async () => {
-      try {
-        const latestQuestion = await redisClient.get("latest_question");
-        if (latestQuestion) {
-          socket.emit("new_question", JSON.parse(latestQuestion));
-        } else {
-          socket.emit("error", { message: "No active question." });
-        }
-      } catch (err) {
-        console.error("Error fetching latest question:", err);
         socket.emit("error", { message: "Server error" });
       }
     });
