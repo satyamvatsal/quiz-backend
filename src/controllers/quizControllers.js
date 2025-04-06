@@ -6,7 +6,6 @@ const ANSWER_DEADLINE = parseInt(process.env.ANSWER_DEADLINE);
 const MAX_SCORE = parseInt(process.env.MAX_SCORE);
 const MIN_SCORE = parseInt(process.env.MIN_SCORE);
 const INCORRECT_PENALTY = parseInt(process.env.INCORRECT_PENALTY);
-const SCORE_SHARPNESS = parseInt(process.env.ANSWER_DEADLINE) / 100;
 
 const handleUserResponse = async (
   userId,
@@ -36,6 +35,7 @@ const handleUserResponse = async (
     const scoreDecrement = INCORRECT_PENALTY;
     await redisClient.hincrby("user_scores", userId, -scoreDecrement);
   }
+  await redisClient.sadd(`answered_users:${questionId}`, userId);
 };
 
 const sendScoresToUsers = async (io) => {
@@ -53,8 +53,22 @@ const sendScoresToUsers = async (io) => {
       `📩 Sent score ${score} to user ${userId} (socket: ${socketId})`,
     );
   }
-
   allScores.sort((a, b) => b.score - a.score);
+
+  let prevScore = null;
+  let rank = 0;
+  for (let i = 0; i < allScores.length; i++) {
+    const user = allScores[i];
+    if (user.score !== prevScore) {
+      rank = i + 1;
+    }
+    const socketId = await redisClient.hget("user_to_socket", user.userId);
+    prevScore = user.score;
+    user.rank = rank;
+    await redisClient.hset("user_rank", user.userId, rank);
+    io.to(socketId).emit("user_rank", rank);
+  }
+
   io.to("leaderboard").emit("update_leaderboard", { scores: allScores });
 };
 
@@ -75,10 +89,20 @@ const sendLatestQuestion = async (socket) => {
     socket.emit("error", { message: "Server error" });
   }
 };
+const sendActiveUsers = async (socket) => {
+  try {
+    const activeUsers = await redisClient.hlen("socket_to_user");
+    socket.emit("active_users", activeUsers);
+  } catch (err) {
+    console.log("Error sending active users: ", err);
+    socket.emit("error", { message: "Error getting active users." });
+  }
+};
 
 module.exports = {
   handleUserResponse,
   sendScoresToUsers,
   sendQuizInfo,
   sendLatestQuestion,
+  sendActiveUsers,
 };

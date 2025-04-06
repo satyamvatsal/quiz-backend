@@ -4,7 +4,6 @@ const cors = require("cors");
 const http = require("http");
 const socketIo = require("socket.io");
 const initWebSocket = require("./src/ws/socket");
-const processQueue = require("./src/services/handleRedisQueue");
 
 const authRoutes = require("./src/routes/authRoutes");
 const quizRoutes = require("./src/routes/quizRoutes");

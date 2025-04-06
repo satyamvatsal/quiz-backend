@@ -4,6 +4,7 @@ const db = require("../config/db");
 require("dotenv").config();
 
 const QUESTION_INTERVAL = process.env.QUESTION_INTERVAL * 1000;
+const quizStartOffset = parseInt(process.env.QUIZ_START_OFFSET);
 
 let questions = [];
 let currentIndex = 0;
@@ -58,8 +59,7 @@ const startQuestionScheduler = async () => {
 };
 
 const scheduledQuizStart = async () => {
-  const quizStartTimeMoment = moment(process.env.QUIZ_START_TIME);
-  const quizStartTime = moment(quizStartTimeMoment).valueOf();
+  const quizStartTime = quizStartOffset * 60 * 1000 + Date.now();
   const message = "The quiz will be started soon.";
   const quizEnded = false;
   await redisPublisher.publish(
@@ -71,8 +71,7 @@ const scheduledQuizStart = async () => {
     }),
   );
   console.log("quiz info published ", quizStartTime);
-  const currentTime = moment();
-  const delay = quizStartTimeMoment.diff(currentTime);
+  const delay = parseInt(quizStartOffset) * 60 * 1000;
   if (delay > 0) {
     console.log(`⏳ Quiz will start in ${delay / 1000} seconds...`);
     setTimeout(startQuestionScheduler, delay);

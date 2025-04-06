@@ -8,6 +8,8 @@ const {
   sendScoresToUsers,
   sendQuizInfo,
   sendLatestQuestion,
+  sendActiveUsers,
+  sendRanks,
 } = require("../controllers/quizControllers");
 
 const ANSWER_DEADLINE = parseInt(process.env.ANSWER_DEADLINE);
@@ -41,6 +43,7 @@ module.exports = (io) => {
       const questionData = JSON.parse(message);
       const { id, question_text, options, correct_answer } = questionData;
       await redisClient.hset("correct_answer", id, correct_answer);
+      console.log("quiz channel socket");
       const startTime = Date.now();
       const questionToBeSent = {
         id,
@@ -66,16 +69,19 @@ module.exports = (io) => {
   io.on("connection", async (socket) => {
     const userId = socket.user.userId;
     console.log(`User connected: ${socket.id} ${socket.user.username}`);
-    if (socket.user.username === "admin") {
-      socket.join("leaderboard");
-    }
     redisClient.hset("socket_to_user", socket.id, userId);
     redisClient.hset("user_to_socket", userId, socket.id);
     redisClient.hset("socket_to_username", socket.id, socket.user.username);
     const message = await redisClient.get("quiz_info");
     const messageObject = JSON.parse(message);
-    await sendQuizInfo(socket, messageObject);
-    await sendLatestQuestion(socket);
+    if (messageObject?.quizEnded || socket.user.username === "admin") {
+      socket.join("leaderboard");
+    }
+    sendActiveUsers(io);
+    sendLatestQuestion(socket);
+    sendQuizInfo(socket, messageObject);
+    const socketRank = await redisClient.hget("user_rank", socket.user.userId);
+    socket.emit("user_rank", socketRank);
 
     socket.on("submit_answer", async ({ questionId, answer }) => {
       try {
@@ -100,6 +106,19 @@ module.exports = (io) => {
           });
           return;
         }
+
+        const hasSubmitted = await redisClient.sismember(
+          `answered_users:${questionId}`,
+          userId,
+        );
+        if (hasSubmitted) {
+          socket.emit("error", {
+            message: "You have already submitted an answer for this question.",
+          });
+          console.log(`${socket.user.username} has submitted again`);
+          return;
+        }
+
         handleUserResponse(userId, questionId, answer, responseTime);
         socket.emit("answer_received", {
           message: "Answer recorded. Wait for results.",
@@ -113,10 +132,11 @@ module.exports = (io) => {
 
     socket.on("disconnect", async () => {
       console.log(`User disconnected: ${socket.id} ${socket.user?.username}`);
-      if (userId) {
-        await redisClient.hdel("socket_to_user", socket.id);
-        await redisClient.hdel("user_to_socket", userId);
-      }
+      redisClient.hdel("socket_to_user", socket.id);
+      redisClient.hdel("socket_to_username", socket.id);
+      if (socket.user.userId)
+        redisClient.hdel("user_to_socket", socket.user.userId);
+      sendActiveUsers(io);
     });
   });
 };
