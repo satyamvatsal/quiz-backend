@@ -10,6 +10,7 @@ const {
   sendLatestQuestion,
   sendActiveUsers,
   sendRanks,
+  sendLeaderboard,
 } = require("../controllers/quizControllers");
 
 const ANSWER_DEADLINE = parseInt(process.env.ANSWER_DEADLINE);
@@ -72,13 +73,13 @@ module.exports = (io) => {
     redisClient.hset("socket_to_user", socket.id, userId);
     redisClient.hset("user_to_socket", userId, socket.id);
     redisClient.hset("socket_to_username", socket.id, socket.user.username);
+    sendLatestQuestion(socket);
     const message = await redisClient.get("quiz_info");
     const messageObject = JSON.parse(message);
     if (messageObject?.quizEnded || socket.user.username === "admin") {
-      socket.join("leaderboard");
+      sendLeaderboard(socket);
     }
     sendActiveUsers(io);
-    sendLatestQuestion(socket);
     sendQuizInfo(socket, messageObject);
     const socketRank = await redisClient.hget("user_rank", socket.user.userId);
     socket.emit("user_rank", socketRank);
@@ -137,6 +138,12 @@ module.exports = (io) => {
       if (socket.user.userId)
         redisClient.hdel("user_to_socket", socket.user.userId);
       sendActiveUsers(io);
+    });
+
+    socket.on("getLeaderboard", async () => {
+      if (messageObject?.quizEnded || socket.user.username === "admin") {
+        await sendLeaderboard(socket);
+      }
     });
   });
 };

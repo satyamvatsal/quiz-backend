@@ -68,7 +68,7 @@ const sendScoresToUsers = async (io) => {
     await redisClient.hset("user_rank", user.userId, rank);
     io.to(socketId).emit("user_rank", rank);
   }
-
+  await redisClient.set("allScores", JSON.stringify(allScores));
   io.to("leaderboard").emit("update_leaderboard", { scores: allScores });
 };
 
@@ -99,10 +99,17 @@ const sendActiveUsers = async (socket) => {
   }
 };
 
+const sendLeaderboard = async (socket) => {
+  const allScores = await redisClient.get("allScores");
+  const allScoresObject = JSON.parse(allScores);
+  socket.emit("update_leaderboard", { scores: allScoresObject });
+};
+
 module.exports = {
   handleUserResponse,
   sendScoresToUsers,
   sendQuizInfo,
   sendLatestQuestion,
   sendActiveUsers,
+  sendLeaderboard,
 };

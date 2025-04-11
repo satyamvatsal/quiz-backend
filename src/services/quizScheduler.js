@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const QUESTION_INTERVAL = process.env.QUESTION_INTERVAL * 1000;
 const quizStartOffset = parseInt(process.env.QUIZ_START_OFFSET);
+const offset = parseInt(process.env.OFFSET);
 
 let questions = [];
 let currentIndex = 0;
@@ -12,7 +13,9 @@ let questionInterval;
 
 const loadQuestions = async () => {
   try {
-    const result = await db.query("SELECT * FROM questions ORDER BY id ASC");
+    const result = await db.query(
+      `SELECT * FROM questions ORDER BY id ASC OFFSET ${offset} LIMIT 10`,
+    );
     questions = result.rows;
     currentIndex = 0;
     console.log(`✅ Loaded ${questions.length} questions into memory.`);
