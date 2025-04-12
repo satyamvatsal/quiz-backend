@@ -7,6 +7,7 @@ const initWebSocket = require("./src/ws/socket");
 
 const authRoutes = require("./src/routes/authRoutes");
 const quizRoutes = require("./src/routes/quizRoutes");
+const adminRoutes = require("./src/routes/adminRoutes");
 
 const { scheduledQuizStart } = require("./src/services/quizScheduler");
 
@@ -29,7 +30,9 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use("/auth", authRoutes);
 app.use("/quiz", quizRoutes);
+app.use("/admin", adminRoutes);
 
 initWebSocket(io);
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

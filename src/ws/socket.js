@@ -29,7 +29,6 @@ module.exports = (io) => {
         console.error("❌ redisClient subscription failed:", err);
       } else {
         console.log(`✅ Subscribed to ${count} channel(s): quiz info`);
-        scheduledQuizStart();
       }
     });
   });
