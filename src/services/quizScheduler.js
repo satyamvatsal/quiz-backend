@@ -63,7 +63,7 @@ const startQuestionScheduler = async () => {
 };
 
 const scheduledQuizStart = async () => {
-  const delay = 10 * 1000;
+  const delay = quizStartOffset * 1000;
   const quizStartTime = delay + Date.now();
   const message = "The quiz will be started soon.";
   const quizEnded = false;
